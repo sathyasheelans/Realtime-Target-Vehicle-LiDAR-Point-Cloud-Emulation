@@ -1,0 +1,8 @@
+prefix=/home/santhanam.17/Carla_scripts/catkin_ws/install
+
+Name: pointcloud_publish
+Description: Description of pointcloud_publish
+Version: 0.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 

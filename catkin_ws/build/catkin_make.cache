@@ -1,0 +1,2 @@
+pointcloud_publish
+-DCATKIN_DEVEL_PREFIX=/home/santhanam.17/Carla_scripts/catkin_ws/devel -DCMAKE_INSTALL_PREFIX=/home/santhanam.17/Carla_scripts/catkin_ws/install -G Unix Makefiles

@@ -224,6 +224,7 @@ def main(arg):
         vis.get_render_option().background_color = [0.05, 0.05, 0.05]
         vis.get_render_option().point_size = 1
         vis.get_render_option().show_coordinate_frame = True
+        print(len(point_list))
 
         if arg.show_axis:
             add_open3d_axis(vis)
@@ -246,6 +247,7 @@ def main(arg):
             sys.stdout.flush()
             dt0 = datetime.now()
             frame += 1
+            
 
     finally:
         world.apply_settings(original_settings)
