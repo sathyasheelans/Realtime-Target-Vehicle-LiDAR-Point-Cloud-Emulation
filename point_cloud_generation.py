@@ -103,7 +103,7 @@ def pointcloud_gen():
 
 
 
-    with open('/home/santhanam.17/Carla_scripts/point_cloud_database.pickle', 'wb') as handle:
+    with open('/home/santhanam.17/Carla_scripts/point_cloud_database_main.pickle', 'wb') as handle:
         pickle.dump(dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 

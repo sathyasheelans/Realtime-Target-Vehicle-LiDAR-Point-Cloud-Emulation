@@ -36,3 +36,26 @@ if __name__ == '__main__':
         X=Target_Trajectory()
     except:
         pass
+
+
+def point_cloud_publish(self):
+
+        rospy.init_node('pointcloud')
+        
+        while not rospy.is_shutdown():
+            rospy.loginfo("happily publishing sample pointcloud.. !")
+            l=rospy.Subscriber("position_info",Float32MultiArray,callback)
+            print(position_info)
+
+            for item in read_dict.values():
+                
+                pcl_pub = rospy.Publisher("pointcloud_topic", PointCloud2)
+                rospy.loginfo("Initializing sample pcl2 publisher node...")
+                #header
+                header = std_msgs.msg.Header()
+                header.stamp = rospy.Time.now()
+                header.frame_id = 'map'
+                #create pcl from points
+                scaled_polygon_pcl = pcl2.create_cloud_xyz32(header, item.astype(np.float32))
+                pcl_pub.publish(scaled_polygon_pcl)
+                rate.sleep()
