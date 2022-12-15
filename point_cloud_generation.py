@@ -1,4 +1,4 @@
-## Import Carla and other packages
+#!/usr/bin/env python
 import carla
 import math
 import random
@@ -15,6 +15,7 @@ from datetime import datetime
 import random
 import pickle
 
+
 def process_lidar_sematic(point_cloud):
     # data.save_to_disk(parent_path + 'semantic-%06d.ply' % data.frame_number)
     parent_path='/home/santhanam.17/Carla_scripts/point/'
@@ -23,14 +24,13 @@ def process_lidar_sematic(point_cloud):
     data = np.frombuffer(point_cloud.raw_data, dtype=np.dtype([
         ('x', np.float32), ('y', np.float32), ('z', np.float32),
         ('CosAngle', np.float32), ('ObjIdx', np.uint32), ('ObjTag', np.uint32)]))
+    
     data_updated=data[data['ObjTag']==10]
+    
     points_temp = np.array([data_updated['x'], data_updated['y'], data_updated['z']]).T
     point_list=o3d.geometry.PointCloud()
     point_list.points = o3d.utility.Vector3dVector(points_temp)
     o3d.io.write_point_cloud("/home/santhanam.17/Carla_scripts/point/"+str(point_cloud.frame)+".ply", point_list)
-
-    #carla.LidarMeasurement.save_to_disk(points_new,"/home/santhanam.17/Carla_scripts/point/a.ply")
-    #print(points)
 
 def start_lidar():
     # --------------
@@ -66,7 +66,7 @@ def merge_ply():
         f = os.path.join(directory, filename)
         # checking if it is a file
         if os.path.isfile(f):
-            print(f)
+
             pcd1 = o3d.io.read_point_cloud(f)
             point_cloud_in_numpy = np.asarray(pcd1.points)
             pcds =np.append(pcds,point_cloud_in_numpy,axis=0)
@@ -87,7 +87,7 @@ def pointcloud_gen():
     dict={}
 
     for i in range(5,120,2):
-        print(i)
+
         for j in range(0,360,1):
 
             transform=Target_Vehicle.get_transform()
@@ -97,12 +97,47 @@ def pointcloud_gen():
             key_tuple=(transform.location.x,transform.location.y,transform.location.z\
                 ,transform.rotation.pitch,transform.rotation.yaw,transform.rotation.roll)
             start_lidar()
-            point_cloud=merge_ply()
-            point_cloud_in_numpy = np.asarray(point_cloud.points)
+            point_cloud1=merge_ply()
+            point_cloud_in_numpy = np.asarray(point_cloud1.points)
             dict.update({key_tuple:point_cloud_in_numpy})
-            time.sleep(0.1)
+
+
 
     with open('/home/santhanam.17/Carla_scripts/point_cloud_database.pickle', 'wb') as handle:
         pickle.dump(dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-pointcloud_gen()
+
+if __name__ == '__main__':
+    '''
+    Sample code to publish a pcl2 with python
+    '''
+    # Connect the client and set up bp library and spawn point
+    client = carla.Client('localhost', 2000)
+    world = client.get_world()
+    bp_lib = world.get_blueprint_library() 
+    spawn_points = world.get_map().get_spawn_points() 
+    world.unload_map_layer(carla.MapLayer.Foliage)
+    world.unload_map_layer(carla.MapLayer.Buildings)
+    world.unload_map_layer(carla.MapLayer.Decals)
+    world.unload_map_layer(carla.MapLayer.ParkedVehicles)
+    world.unload_map_layer(carla.MapLayer.Props)
+    world.unload_map_layer(carla.MapLayer.StreetLights)
+    world.unload_map_layer(carla.MapLayer.Walls)
+    world.unload_map_layer(carla.MapLayer.Particles)
+    world.load_map_layer(carla.MapLayer.Ground)
+    ##Selecting a spawn point for the ego vehicle
+    spawnPoint=carla.Transform(carla.Location(x=0,y=0, z=0.598),carla.Rotation(pitch=0.0, yaw=0.0, roll=0.000000))
+    #Spawn Ego vehicle
+    Ego_Vehicle_bp = bp_lib.find('vehicle.lincoln.mkz_2020') 
+    Ego_Vehicle = world.try_spawn_actor(Ego_Vehicle_bp, spawnPoint)
+
+    # Move spectator to view ego vehicle
+    spectator = world.get_spectator() 
+    transform = carla.Transform(Ego_Vehicle.get_transform().transform(carla.Location(x=-25,z=10,y=0)),Ego_Vehicle.get_transform().rotation) 
+    spectator.set_transform(transform)
+    ##Selecting a random spawn point for the target vehicle
+    spawnPoint1=carla.Transform(carla.Location(x=10,y=0, z=0.598),carla.Rotation(pitch=0.0, yaw=0.0, roll=0.000000))
+    #Spawn Target vehicle
+    Target_Vehicle_bp = bp_lib.find('vehicle.lincoln.mkz_2020') 
+    Target_Vehicle = world.try_spawn_actor(Target_Vehicle_bp, spawnPoint1)
+    pointcloud_gen()

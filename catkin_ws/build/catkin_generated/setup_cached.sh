@@ -7,4 +7,5 @@
 # new environment variables
 
 # modified environment variables
+export PATH='/opt/ros/melodic/bin:/home/santhanam.17/anaconda3/envs/working/bin:/home/santhanam.17/anaconda3/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/usr/lib/fastx/3/apps'
 export PWD='/home/santhanam.17/Carla_scripts/catkin_ws/build'

@@ -57,6 +57,6 @@ if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_
 endif()
 
 if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_COMPONENT)
-  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/pointcloud_publish" TYPE PROGRAM FILES "/home/santhanam.17/Carla_scripts/catkin_ws/build/pointcloud_publish/catkin_generated/installspace/temp_pos_publish.py")
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/pointcloud_publish" TYPE PROGRAM FILES "/home/santhanam.17/Carla_scripts/catkin_ws/build/pointcloud_publish/catkin_generated/installspace/Target_publish.py")
 endif()
 

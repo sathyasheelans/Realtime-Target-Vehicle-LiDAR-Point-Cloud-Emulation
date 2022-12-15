@@ -7,11 +7,12 @@ def pos_ego():
 
     rospy.init_node('position_temp')
     rate=rospy.Rate(10)
-    while not rospy.is_shutdown():
+
+    for i in range(0,20,2):
         rospy.loginfo("Publishing a position")
         pos_pub = rospy.Publisher("position_info", Float32MultiArray)
         posinfo=Float32MultiArray()
-        posinfo.data=[10,5,0.598]
+        posinfo.data=[i,5,0.598]
         rospy.loginfo("Initializing sample pos publisher node...")
         pos_pub.publish(posinfo)
         rate.sleep()
