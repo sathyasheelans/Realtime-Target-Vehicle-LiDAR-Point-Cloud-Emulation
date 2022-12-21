@@ -15,7 +15,8 @@ class Target_Trajectory:
         trajectory_array=self.pos_target()
         pos_pub = rospy.Publisher("target_pose", Pose)
         rospy.loginfo("Initializing sample pos publisher node...")
-        while not rospy.is_shutdown():
+        
+        while not rospy.is_shutdown(): 
             for i in trajectory_array:
                 self.pose.position.x=i[0]
                 self.pose.position.y=i[1]
@@ -26,7 +27,7 @@ class Target_Trajectory:
 
 
     def pos_target(self):
-        trajectory=np.array([[-20,0,0],[-10,0,0],[-7,0,0],[-2,4,0],[7,4,0],[9,0,0],[20,0,0]])
+        trajectory=np.array([[-19,0,0],[-10,0,0],[-7,0,0],[-2,4,0],[7,4,0],[9,0,0],[19,0,0]])
         trajectory_extrapolated=[]
         for x in range(len(trajectory)-1):
             trajectory_extrapolated.append(np.linspace(trajectory[x],trajectory[x+1],10)[:-1])
