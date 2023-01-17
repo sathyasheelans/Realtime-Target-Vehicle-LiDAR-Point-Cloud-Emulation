@@ -1,0 +1,8 @@
+prefix=/home/santhanam.17/Carla_scripts/catkin_ws/devel
+
+Name: tf2_bullet
+Description: Description of tf2_bullet
+Version: 0.6.9
+Cflags: -I/home/santhanam.17/Carla_scripts/catkin_ws/src/geometry2_python3/tf2_bullet/include -I/usr/include/bullet
+Libs: -L${prefix}/lib 
+Requires: 

@@ -1,0 +1,8 @@
+prefix=/home/santhanam.17/Carla_scripts/catkin_ws/devel
+
+Name: tf2_eigen
+Description: Description of tf2_eigen
+Version: 0.6.9
+Cflags: -I/home/santhanam.17/Carla_scripts/catkin_ws/src/geometry2_python3/tf2_eigen/include -I/usr/local/include/eigen3
+Libs: -L${prefix}/lib 
+Requires: tf2

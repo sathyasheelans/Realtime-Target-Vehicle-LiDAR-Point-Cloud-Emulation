@@ -1,0 +1,7 @@
+set(jsk_tf2_py_python3_SETUP_PY_SETUP_MODULE "distutils.core")
+set(jsk_tf2_py_python3_SETUP_PY_VERSION "0.6.9")
+set(jsk_tf2_py_python3_SETUP_PY_SCRIPTS "")
+set(jsk_tf2_py_python3_SETUP_PY_PACKAGES "tf2_py")
+set(jsk_tf2_py_python3_SETUP_PY_PACKAGE_DIRS "src/tf2_py")
+set(jsk_tf2_py_python3_SETUP_PY_MODULES "")
+set(jsk_tf2_py_python3_SETUP_PY_MODULE_DIRS "")

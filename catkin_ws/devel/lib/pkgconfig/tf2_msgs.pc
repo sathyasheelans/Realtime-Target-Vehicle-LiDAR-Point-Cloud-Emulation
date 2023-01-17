@@ -1,0 +1,8 @@
+prefix=/home/santhanam.17/Carla_scripts/catkin_ws/devel
+
+Name: tf2_msgs
+Description: Description of tf2_msgs
+Version: 0.6.9
+Cflags: -I/home/santhanam.17/Carla_scripts/catkin_ws/devel/include -I/home/santhanam.17/Carla_scripts/catkin_ws/src/geometry2_python3/tf2_msgs/include
+Libs: -L${prefix}/lib 
+Requires: message_generation geometry_msgs actionlib_msgs

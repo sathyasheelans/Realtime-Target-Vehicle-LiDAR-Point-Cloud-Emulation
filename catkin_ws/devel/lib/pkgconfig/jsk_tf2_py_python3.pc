@@ -1,0 +1,8 @@
+prefix=/home/santhanam.17/Carla_scripts/catkin_ws/devel
+
+Name: jsk_tf2_py_python3
+Description: Description of jsk_tf2_py_python3
+Version: 0.6.9
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: rospy tf2
