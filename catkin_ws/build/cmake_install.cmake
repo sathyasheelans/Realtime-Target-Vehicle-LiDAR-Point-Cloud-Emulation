@@ -132,6 +132,7 @@ if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
   include("/home/santhanam.17/Carla_scripts/catkin_ws/build/gtest/cmake_install.cmake")
   include("/home/santhanam.17/Carla_scripts/catkin_ws/build/geometry2_python3/geometry2/cmake_install.cmake")
+  include("/home/santhanam.17/Carla_scripts/catkin_ws/build/ros_numpy/cmake_install.cmake")
   include("/home/santhanam.17/Carla_scripts/catkin_ws/build/geometry2_python3/tf2_msgs/cmake_install.cmake")
   include("/home/santhanam.17/Carla_scripts/catkin_ws/build/geometry2_python3/tf2/cmake_install.cmake")
   include("/home/santhanam.17/Carla_scripts/catkin_ws/build/geometry2_python3/tf2_bullet/cmake_install.cmake")

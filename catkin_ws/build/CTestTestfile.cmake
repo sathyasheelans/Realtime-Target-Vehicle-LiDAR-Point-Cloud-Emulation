@@ -6,6 +6,7 @@
 # testing this directory and lists subdirectories to be tested as well.
 subdirs("gtest")
 subdirs("geometry2_python3/geometry2")
+subdirs("ros_numpy")
 subdirs("geometry2_python3/tf2_msgs")
 subdirs("geometry2_python3/tf2")
 subdirs("geometry2_python3/tf2_bullet")

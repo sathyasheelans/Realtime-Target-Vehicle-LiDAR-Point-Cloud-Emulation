@@ -21,8 +21,8 @@ class Target_Trajectory:
         trajectory_array=[]
         yaw_rate=[]
         Broadcaster = TransformBroadcaster()
-        #trajectory_array =self.pos_target()
-        trajectory_array =self.extrpolated_position()
+        trajectory_array =self.pos_target()
+        #trajectory_array =self.extrpolated_position()
         yaw_temp=self.yaw_rate_calculate(trajectory_array)
         rospy.loginfo(len(yaw_temp))
         rospy.loginfo(len(trajectory_array))
@@ -36,7 +36,8 @@ class Target_Trajectory:
                 self.pose.position.z=i[2]
                 quaternion = quaternion_from_euler(0, 0, j)
                 self.pose.orientation.w=j
-                rospy.loginfo(self.pose)
+                #rospy.loginfo(self.pose.position)
+                #rospy.loginfo(j)
                 pos_pub.publish(self.pose)
                 translation = (self.pose.position.x, self.pose.position.y, self.pose.position.z)
                 rotation = (quaternion[0], quaternion[1], quaternion[2], quaternion[3])
@@ -46,7 +47,8 @@ class Target_Trajectory:
 
     def pos_target(self):
         trajectory=np.array([[-25,0,0.6],[-15,0,0.6],[-12,1,0.6],[-9,2,0.6],[-6,3,0.6],[-3,4,0.6],[0,5,0.6],[10,5,0.6],\
-                                [12,4,0.6],[15,3,0.6],[18,2,0.6],[21,1,0.6],[23,0,0.6],[25,0,0.6]])
+                                [12,4,0.6],[15,3,0.6],[18,2,0.6],[21,1,0.6],[23,0,0.6],[25,0,0.6],[23,0,0.6],[21,1,0.6],[18,2,0.6],\
+                                    [15,3,0.6],[12,4,0.6],[10,5,0.6],[0,5,0.6],[-3,4,0.6],[-6,3,0.6],[-9,2,0.6],[-12,1,0.6],[-15,0,0.6]])
         trajectory_extrapolated=[]
         for x in range(len(trajectory)-1):
             trajectory_extrapolated.append(np.linspace(trajectory[x],trajectory[x+1],30)[:-1])
@@ -75,11 +77,32 @@ class Target_Trajectory:
     def yaw_rate_calculate(self, trajectory):
         yaw_rate=[]
         for x in range(len(trajectory)-1):
-            yaw_rate_temp=math.degrees(math.atan((trajectory[x][1]-trajectory[x+1][1])/(trajectory[x][0]-trajectory[x+1][0])))
-            yaw_rate.append(yaw_rate_temp)
-        rospy.loginfo(yaw_rate)
-        return yaw_rate
+            x2=trajectory[x][0]
+            x1=trajectory[x+1][0]
+            y2=trajectory[x][1]
+            y1=trajectory[x+1][1]
+            angle=math.degrees(math.atan(abs((y1-y2))/abs((x1-x2))))
 
+            if y2<y1:
+                if x2<x1:
+                    yaw_rate_temp=angle
+                else:
+                    yaw_rate_temp=180-angle
+            elif y2>y1:
+                if x2<x1:
+                    yaw_rate_temp=360-angle
+                else:
+                    yaw_rate_temp=180+angle  
+            else:
+                if x2>x1:
+                    yaw_rate_temp=180+angle
+                else:
+                    yaw_rate_temp=angle 
+                yaw_rate_temp=angle
+
+            yaw_rate.append(yaw_rate_temp)
+            #rospy.loginfo(yaw_rate_temp)
+        return yaw_rate
 
 if __name__ == '__main__':
 

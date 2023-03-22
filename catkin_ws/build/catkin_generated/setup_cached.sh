@@ -8,3 +8,4 @@
 
 # modified environment variables
 export PWD='/home/santhanam.17/Carla_scripts/catkin_ws/build'
+export PYTHONPATH='/home/santhanam.17/Carla_scripts/catkin_ws/devel/lib/python3/dist-packages:/opt/ros/melodic/lib/python2.7/dist-packages:/home/santhanam.17/Carla/PythonAPI/carla/dist/carla-0.9.13-py3.7-linux-x86_64.egg:/home/santhanam.17/Carla/PythonAPI/carla/:/home/santhanam.17/Carla/PythonAPI/carla/dist/carla-0.9.13-py3.7-linux-x86_64.egg:/home/santhanam.17/Carla/PythonAPI/carla/'

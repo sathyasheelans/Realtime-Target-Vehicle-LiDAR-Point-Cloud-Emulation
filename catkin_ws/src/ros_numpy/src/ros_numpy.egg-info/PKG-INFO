@@ -1,0 +1,10 @@
+Metadata-Version: 2.1
+Name: ros-numpy
+Version: 0.0.5
+Summary: A collection of conversion function for extracting numpy arrays from messages
+Home-page: http://wiki.ros.org/ros_numpy
+Author: Eric Wieser
+Author-email: wieser@mit.edu
+Maintainer: Eric Wieser <wieser@mit.edu>, George Stavrinos <stavrinosgeo@gmail.com>
+License: MIT
+License-File: LICENSE
