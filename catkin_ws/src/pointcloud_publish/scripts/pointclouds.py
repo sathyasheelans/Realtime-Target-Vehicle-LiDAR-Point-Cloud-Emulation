@@ -140,7 +140,7 @@ class Augmented_PCL_Publish:
     #function to find the closest pointclound orientation based on target vehicle location and heading angle
     def closest_point(self, arr, orr):
 
-        Ego_postion=np.array([0,0,0])
+        Ego_postion=np.array([0,0,2])
         dist = round(np.linalg.norm(arr - Ego_postion))
         lst=list(range(0,360,1))
 
@@ -199,40 +199,25 @@ class Augmented_PCL_Publish:
         point_cloud_background = o3d.geometry.PointCloud()
         point_cloud_background.points = o3d.utility.Vector3dVector(self.real_pointcloud)
 
-        """now = datetime.now()
-        current_time = now.strftime("%H:%M:%S")
-        o3d.io.write_point_cloud("/home/santhanam.17/Carla_scripts/processed/"+str(current_time)+"_Final_Point_cloud.ply", point_cloud_background,write_ascii=True)
-        """
         box_points=Axisalignedbunding_box.get_box_points()
         box_center=Axisalignedbunding_box.get_center()
-        #rospy.loginfo(box_center)
+
+        #remove the points inside the vehicle bounding box
         inliers_indices = Orientedbounding_box.get_point_indices_within_bounding_box(point_cloud_background.points)
         outliers_pcd = point_cloud_background.select_by_index(inliers_indices, invert=True)
 
+        #visualization of the bounding box
         self.visualization_boundingbox(np.array(Orientedbounding_box.get_box_points()))
-                
 
-        #self.visualization_base(base_points)
-        #rospy.loginfo(np.asarray(outliers_pcd.points))
-
-
+        #Generate frustum base
         frustrum_points=self.frustrum_generation(box_points,box_center)
         frustrum_points_np=np.array(frustrum_points)
-
-        #frustum_corners=[frustrum_points_np[1],frustrum_points_np[3],frustrum_points_np[5],frustrum_points_np[7],frustrum_points_np[0],frustrum_points_np[2],frustrum_points_np[4],frustrum_points_np[6]]
+        
+        #function to remove the points inside frustum
         outliers_pcd_1=self.remove_points_inside_frustum(frustrum_points_np, np.array(outliers_pcd.points))
 
-        #rospy.loginfo(frustrum_points_np)
-        #rospy.loginfo(outside_points)
-        
-        #boundingbox_shadow=point_cloud_1.get_minimal_oriented_bounding_box()
-
-        """boundingbox_shadow=o3d.geometry.OrientedBoundingBox.create_from_points(frustrum_points_o3d)
-        inliers_indices_1 = boundingbox_shadow.get_point_indices_within_bounding_box(outliers_pcd.points)
-        outliers_pcd_2=outliers_pcd.select_by_index(inliers_indices_1, invert=True)"""
-
         #augment the transformed pcd with real-time pcd(removed)
-        #augmented_pcd=np.concatenate((Transformed_pcd,np.array(outliers_pcd_1.points)))
+        #augmented_pcd=np.concatenate((Transformed_pcd,np.array(outliers_pcd.points)))
         augmented_pcd=np.concatenate((Transformed_pcd,outliers_pcd_1))
 
 
@@ -266,10 +251,12 @@ class Augmented_PCL_Publish:
         transformed_pcd = np.asarray(transformed_point_cloud.points)
 
         return transformed_pcd, boundingbox_POV, boundingbox_POV_axis
-        
+
+    #Function to get the generate frustum corners based on Bounding box position and orientation   
     def frustrum_generation(self,box_points,target_location):
 
-        lidar_location=[0,0,2]
+        lidar_location=[0,0,0]
+        self.visualization_Lidar(lidar_location)
 
         #Distance between lidar and target vehicle
         Lidar_distance = round(np.linalg.norm(np.array(lidar_location)-np.array(target_location)))
@@ -296,15 +283,13 @@ class Augmented_PCL_Publish:
             #rospy.loginfo(dist)
             #direction vector between the projected points to get unique projection
             dv=[lidar_location[0]-proj_point[0],lidar_location[1]-proj_point[1],lidar_location[2]-proj_point[2]]
-            
-
             #create a object tuple
             object_tuple=tuple([dist,tuple(proj_point),tuple(dv)])
             if object_tuple not in tuple_array:
                 tuple_array.append(object_tuple)
 
+        #sort teh tuple array based on distance
         tuple_array.sort(key=lambda x:x[0])
-        #rospy.loginfo([x[0] for x in tuple_array])
         points_projected_sorted=[list(x[1]) for x in tuple_array]
         if len(points_projected_sorted)>4:
             points_projected_sorted=points_projected_sorted[4:]
@@ -312,9 +297,12 @@ class Augmented_PCL_Publish:
         #rospy.loginfo(points_projected_sorted)
         #Generation of Frustrum points
         frustrum_points=[]
+
+        #Sort the projected corners to determine TOP left, TOP right, BOTTOM left, BOTTOM right
         target_location_max_z=[target_location[0],target_location[1],1]
         k_1 =(plane[3] - (plane[0]*target_location_max_z[0]) - (plane[1]*target_location_max_z[1]) - (plane[2]*target_location_max_z[2]))/(plane[0]*plane[0] + plane[1]*plane[1] +plane[2]*plane[2])
         extended_point=[target_location_max_z[0]+(k_1*plane[0]), target_location_max_z[1]+(k_1*plane[1]), target_location_max_z[2]+(k_1*plane[2])]
+
         tl=[]
         tr=[]
         bl=[]
@@ -338,19 +326,16 @@ class Augmented_PCL_Publish:
                     tr=point
             else:
                 if cross_product[2]<0:
-                    bl=point
-                else:
                     br=point
+                else:
+                    bl=point
 
-        #rospy.loginfo([tl,tr,bl,br])
-        
-        #points_projected_sorted=self.sort_3d_points(np.array(points_projected_sorted),np.array(target_location))
-        points_projected_sorted=[tl,tr,bl,br]
+        points_projected_sorted=[tl,tr,br,bl]
 
         
         #self.visualization_base(points_projected_sorted)
 
-
+        #Generate far corners of the frustum
         for p in list(points_projected_sorted):
 
             vx=(p[0]-lidar_location[0])
@@ -367,7 +352,7 @@ class Augmented_PCL_Publish:
             frustrum_points.append(frus_point)
             frustrum_points.append(p)
 
-        #far_points=[frustrum_points[0],frustrum_points[2],frustrum_points[4],frustrum_points[6]]
+        #Visualization of the frustum
         self.visualization_projection(frustrum_points)
         """top_left=[frustrum_points[0],frustrum_points[1]]
         top_right=[frustrum_points[2],frustrum_points[3]]
@@ -376,15 +361,7 @@ class Augmented_PCL_Publish:
         #self.visualization_corner(bottom_right)
         return frustrum_points
 
-
-    def sort_3d_points(self,points, center):
-
-        normal = np.cross(points[0]-points[1], points[1]-points[2])
-        points_sorted = sorted(points, key=lambda p: np.arctan2(
-            np.dot(np.cross(p-center, normal), normal), np.dot(p-center, normal)))
-        return points_sorted
-
-
+    #Function to perform frustum culling
     def remove_points_inside_frustum(self, frustum_corners, point_cloud):
         # Define the frustum using its corner points
         tln=frustum_corners[1]
@@ -429,14 +406,8 @@ class Augmented_PCL_Publish:
 
         planes = np.array([top_plane, bottom_plane, far_plane, front_plane, left_plane, right_plane])
 
-        """# Check which points are inside the frustum
-        distances = np.dot(point_cloud, planes[:3]) - planes[3]
-        rospy.loginfo(distances)
-        inside_frustum = np.all(distances <= 0, axis=1)"""
-        
         # Iterate through the point cloud and remove points inside the frustum
         inside_mask = np.ones(len(point_cloud), dtype=bool)
-        rospy
         for plane in planes:
             distances = np.dot(point_cloud, plane[:3]) + plane[3]
             inside_mask = np.logical_and(inside_mask, distances > 0)
@@ -524,6 +495,34 @@ class Augmented_PCL_Publish:
         marker_msg.points = [p1, p2]
         marker_pub.publish(marker_msg)
 
+    def visualization_Lidar(self,location):
+        # Create a marker publisher
+        marker_pub = rospy.Publisher('visualization_marker_lidar', Marker, queue_size=10)
+
+        # Define the marker message
+        marker_msg = Marker()
+        marker_msg.header.frame_id = 'point'
+        marker_msg.type = Marker.CYLINDER 
+        marker_msg.action = Marker.ADD
+        marker_msg.scale.x = 1
+        marker_msg.scale.y = 1
+        marker_msg.scale.z = 1
+        marker_msg.color.a = 1.0
+        marker_msg.color.r = 0.0
+        marker_msg.color.g = 0.0
+        marker_msg.color.b = 1.0
+
+        # Define the points that define the plane
+        
+        p1 = Point()
+        p1.x = location[0]
+        p1.y = location[1]
+        p1.z = location[2]
+    
+        # Set the points field of the marker message
+        marker_msg.points = [p1]
+        marker_pub.publish(marker_msg)
+
     def visualization_far(self,box_points):
         # Create a marker publisher
         marker_pub = rospy.Publisher('visualization_marker_far', Marker, queue_size=10)
@@ -567,6 +566,7 @@ class Augmented_PCL_Publish:
         # Set the points field of the marker message
         marker_msg.points = [p1, p2, p3, p4, p1]
         marker_pub.publish(marker_msg)
+
     def visualization_projection(self,box_points):
         # Create a marker publisher
         marker_pub = rospy.Publisher('visualization_marker_projection', Marker, queue_size=10)
