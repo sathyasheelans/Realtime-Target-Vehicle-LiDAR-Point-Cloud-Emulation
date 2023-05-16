@@ -72,10 +72,10 @@ from collections import OrderedDict
 from datetime import datetime
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point
+import message_filters
 #from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
 
 import sensor_msgs.point_cloud2 as pcl2
-from scipy.spatial import ConvexHull, Delaunay, cKDTree
 
 
 class Augmented_PCL_Publish:
@@ -96,19 +96,38 @@ class Augmented_PCL_Publish:
         self.not_first_callback = False
         self.Transformation_Matrix= np.eye(4)
         
-        self.listener = tf.TransformListener()
-        self.listener.waitForTransform("target", "point", rospy.Time(0),rospy.Duration(10))
-        (self.trans,self.rot) = self.listener.lookupTransform('target', 'point', rospy.Time(0))
+        #self.listener = tf.TransformListener()
+        #self.listener.waitForTransform("target", "point", rospy.Time(0),rospy.Duration(10))
+        #(self.trans,self.rot) = self.listener.lookupTransform('target', 'point', rospy.Time(0))
 
         #Initialize a subscriber to subscribe to background to real-time background pointcloud
+        #self.points_raw_subscriber=rospy.Subscriber('points_raw',PointCloud2,self.point_cloud_subscribe)
         self.points_raw_subscriber=rospy.Subscriber('points_raw',PointCloud2,self.point_cloud_subscribe)
 
         #Initialize a Subscriber to subscribe to the pose (postion and orientation) of the target vehicle
         self.pose_subscriber=rospy.Subscriber('target_pose',Pose,self.update_callback)
+
+        #self.points_raw=message_filters.Subscriber('points_raw',PointCloud2)
+        #self.pose_sub=message_filters.Subscriber('target_pose',PoseStamped)
+
+        #ts = message_filters.TimeSynchronizer([self.points_raw, self.pose_sub], 10)
+        #ts.registerCallback(self.ucallback)
+        
         rospy.spin()
-    
-    #Callback function of "target_pose" subscriber
-    def update_callback(self,data):
+        #self.rate.sleep()
+
+    def ucallback(self, data_1, data):
+        
+        rospy.loginfo("hi")
+
+        self.point_background=data_1
+        #xyz_array = ros_numpy.point_cloud2.get_xyz_points(self.point_background)
+        #xyz_array = pcl2.read_points_list(self.point_background, skip_nans=True, field_names=("x", "y", "z"))
+        real_pointcloud_num = ros_numpy.numpify(data_1)
+        self.real_pointcloud=np.zeros((real_pointcloud_num.shape[0],3))
+        self.real_pointcloud[:,0]=real_pointcloud_num['x']
+        self.real_pointcloud[:,1]=real_pointcloud_num['y']
+        self.real_pointcloud[:,2]=real_pointcloud_num['z']
 
         #check the time taken to perform the code 
         callback_time = rospy.get_time()
@@ -125,9 +144,37 @@ class Augmented_PCL_Publish:
         self.point_cloud_publish(self.closest_point(self.curr_position,self.orientation))
         self.not_first_callback = True
         self.last_callback_time = callback_time
+
+    
+    #Callback function of "target_pose" subscriber
+    def update_callback(self,data):
+        #rospy.loginfo(data.header.stamp)
+        #check the time taken to perform the code 
+        
+        callback_time = rospy.get_time()
+        if self.not_first_callback:
+            time_since_last_callback = rospy.get_time() - self.last_callback_time
+            #rospy.loginfo(time_since_last_callback)
+
+        #assign the pose values to the veriable
+        self.pose=data
+        self.curr_position=np.array([self.pose.position.x,self.pose.position.y,self.pose.position.z])
+        self.orientation=self.pose.orientation.w
+
+        #Call the function which publishes the augmented point cloud
+        self.point_cloud_publish(self.closest_point(self.curr_position,self.orientation))
+        self.not_first_callback = True
+        self.last_callback_time = callback_time
+
+        duration = rospy.get_time() - callback_time
+        rospy.loginfo("update_callback %s",duration)
+
+        #rospy.spin()
     
     #Callback function of "point_raw" subscriber
     def point_cloud_subscribe(self,data_1):
+        #rospy.loginfo(data_1.header.stamp)
+        #rospy.loginfo(rospy.get_time())
         self.point_background=data_1
         #xyz_array = ros_numpy.point_cloud2.get_xyz_points(self.point_background)
         #xyz_array = pcl2.read_points_list(self.point_background, skip_nans=True, field_names=("x", "y", "z"))
@@ -137,17 +184,23 @@ class Augmented_PCL_Publish:
         self.real_pointcloud[:,1]=real_pointcloud_num['y']
         self.real_pointcloud[:,2]=real_pointcloud_num['z']
 
+        
+
     #function to find the closest pointclound orientation based on target vehicle location and heading angle
     def closest_point(self, arr, orr):
 
+        start_time = rospy.get_time()
         Ego_postion=np.array([0,0,2])
         dist = round(np.linalg.norm(arr - Ego_postion))
         lst=list(range(0,360,1))
 
         # Calculate the rotation angle with respect to the ego vehicle
         yaw_angle=orr #heading angle
+        #if arr[0] and arr[1] >0:
         normal_angle=math.degrees(math.atan(abs(arr[0]/arr[1]))) #angle between the ego vehicle and target vehicle normals
-
+        #else:
+            #normal_angle=math.degrees(math.atan(abs(arr[0]/arr[1])))
+        
         closest_orientation=0
         if arr[1]<0 and arr[0]>=0: #1st Quadrant
             closest_orientation=90+yaw_angle-normal_angle
@@ -161,18 +214,24 @@ class Augmented_PCL_Publish:
         if closest_orientation>360:
             closest_orientation=closest_orientation%360
 
+            #closest_orientation=-closest_orientation
         if dist>=120:
             dist=120
         elif dist<5:
             dist=5
-
+        """rospy.loginfo(arr[0])
+        rospy.loginfo(arr[1])
+        rospy.loginfo(closest_orientation)
+        rospy.loginfo(yaw_angle)"""
         #closest orientation from the list of orientation
         closet_yaw_rate=lst[min(range(len(lst)), key = lambda i: abs(lst[i]-closest_orientation))]
         closest_keys=[k for k in self.keys if k[4]==dist and k[3]==closet_yaw_rate ] #get the key of that pointcloud
         pcd=self.pcl_dict[closest_keys[0]] #get the pointcloud
         #rospy.loginfo(dist)
         #rospy.loginfo(len(pcd))
-        #rospy.loginfo(closest_orientation)
+        """rospy.loginfo(closest_keys[0][0])
+        rospy.loginfo(closest_keys[0][1])
+        rospy.loginfo(closest_keys[0][2])"""
         #rospy.loginfo(closet_yaw_rate)
         
         #rotation angle along Z axis
@@ -187,11 +246,14 @@ class Augmented_PCL_Publish:
         self.Transformation_Matrix[1,3]=arr[1]-closest_keys[0][1]
         self.Transformation_Matrix[2,3]=arr[2]-closest_keys[0][2]
 
+        duration = rospy.get_time() - start_time
+        rospy.loginfo("closest_point %s",duration)
         return pcd
 
     
     def point_cloud_publish(self,pcd):
 
+        start_time = rospy.get_time()
         #Function to call pointcloud transform
         Transformed_pcd, Orientedbounding_box , Axisalignedbunding_box=self.point_cloud_transform_o3d(pcd)
         
@@ -207,7 +269,7 @@ class Augmented_PCL_Publish:
         outliers_pcd = point_cloud_background.select_by_index(inliers_indices, invert=True)
 
         #visualization of the bounding box
-        self.visualization_boundingbox(np.array(Orientedbounding_box.get_box_points()))
+        #self.visualization_boundingbox(np.array(Orientedbounding_box.get_box_points()))
 
         #Generate frustum base
         frustrum_points=self.frustrum_generation(box_points,box_center)
@@ -217,46 +279,54 @@ class Augmented_PCL_Publish:
         outliers_pcd_1=self.remove_points_inside_frustum(frustrum_points_np, np.array(outliers_pcd.points))
 
         #augment the transformed pcd with real-time pcd(removed)
-        #augmented_pcd=np.concatenate((Transformed_pcd,np.array(outliers_pcd.points)))
+        #augmented_pcd_1=np.concatenate((Transformed_pcd,np.array(outliers_pcd.points)))
         augmented_pcd=np.concatenate((Transformed_pcd,outliers_pcd_1))
 
 
         #header
         header = std_msgs.msg.Header()
         header.stamp = rospy.Time.now()
-        header.frame_id = 'point'
+        header.frame_id = 'lidar'
 
         #Pointcloud publishers
         #transformed_pcl_pub=rospy.Publisher("transformed_pcl",PointCloud2,queue_size=10)
         augmented_pcl_pub=rospy.Publisher("augmented_pcl",PointCloud2,queue_size=10)
 
         #create pointcloud from points
-        #self.transformed_point_cloud = pcl2.create_cloud_xyz32(header, augmented_pcd.astype(np.float32))
+        #self.transformed_point_cloud = pcl2.create_cloud_xyz32(header, augmented_pcd_1.astype(np.float32))
         self.augmented_point_cloud = pcl2.create_cloud_xyz32(header, augmented_pcd.astype(np.float32))
 
 
         #transformed_pcl_pub.publish(self.transformed_point_cloud)
         augmented_pcl_pub.publish(self.augmented_point_cloud)
-        self.rate.sleep()
+
+        duration = rospy.get_time() - start_time
+        rospy.loginfo("point_cloud_publish %s",duration)
+        #self.rate.sleep()
     
     #Function to get the bounding box and perform transformation of the pointcloud and return the transformed pcl
     def point_cloud_transform_o3d(self,pcd):
         
+        start_time = rospy.get_time()
         point_cloud_1 = o3d.geometry.PointCloud()
         pcd = [x for x in pcd if x[0]!=0 and x[1]!=0]
+        pcd = np.unique(pcd, axis =0)
         point_cloud_1.points = o3d.utility.Vector3dVector(pcd)
         transformed_point_cloud=point_cloud_1.transform(self.Transformation_Matrix)
         boundingbox_POV=o3d.geometry.OrientedBoundingBox.create_from_points(transformed_point_cloud.points)
         boundingbox_POV_axis=o3d.geometry.AxisAlignedBoundingBox.create_from_points(transformed_point_cloud.points)
         transformed_pcd = np.asarray(transformed_point_cloud.points)
 
+        duration = rospy.get_time() - start_time
+        rospy.loginfo("point_cloud_transform_o3d %s",duration)
         return transformed_pcd, boundingbox_POV, boundingbox_POV_axis
 
     #Function to get the generate frustum corners based on Bounding box position and orientation   
     def frustrum_generation(self,box_points,target_location):
 
-        lidar_location=[0,0,0]
-        self.visualization_Lidar(lidar_location)
+        start_time = rospy.get_time()
+        lidar_location=[0,0,2]
+        #self.visualization_Lidar(lidar_location)
 
         #Distance between lidar and target vehicle
         Lidar_distance = round(np.linalg.norm(np.array(lidar_location)-np.array(target_location)))
@@ -291,6 +361,9 @@ class Augmented_PCL_Publish:
         #sort teh tuple array based on distance
         tuple_array.sort(key=lambda x:x[0])
         points_projected_sorted=[list(x[1]) for x in tuple_array]
+
+        #self.visualization_projected(points_projected_sorted)
+
         if len(points_projected_sorted)>4:
             points_projected_sorted=points_projected_sorted[4:]
 
@@ -344,25 +417,30 @@ class Augmented_PCL_Publish:
 
 
             length=math.sqrt((vx*vx)+(vy*vy)+(vz*vz))
-            vx_norm=50*vx/length
-            vy_norm=50*vy/length
-            vz_norm=50*vz/length
+            vx_norm=100*vx/length
+            vy_norm=100*vy/length
+            vz_norm=100*vz/length
 
             frus_point=[p[0]+vx_norm,p[1]+vy_norm,p[2]+vz_norm]
             frustrum_points.append(frus_point)
             frustrum_points.append(p)
 
         #Visualization of the frustum
-        self.visualization_projection(frustrum_points)
+        #self.visualization_projection(frustrum_points)
         """top_left=[frustrum_points[0],frustrum_points[1]]
         top_right=[frustrum_points[2],frustrum_points[3]]
         bottom_left=[frustrum_points[4],frustrum_points[5]]
         bottom_right=[frustrum_points[6],frustrum_points[7]]"""
         #self.visualization_corner(bottom_right)
+
+        duration = rospy.get_time() - start_time
+        rospy.loginfo("frustrum_generation %s",duration)
         return frustrum_points
 
     #Function to perform frustum culling
     def remove_points_inside_frustum(self, frustum_corners, point_cloud):
+
+        start_time = rospy.get_time()
         # Define the frustum using its corner points
         tln=frustum_corners[1]
         trn=frustum_corners[3]
@@ -413,6 +491,9 @@ class Augmented_PCL_Publish:
             inside_mask = np.logical_and(inside_mask, distances > 0)
         point_cloud = point_cloud[~inside_mask]
         #rospy.loginfo(inside_frustum)
+
+        duration = rospy.get_time() - start_time
+        rospy.loginfo("remove_points_inside_frustum %s",duration)
         return point_cloud
 
 
@@ -422,7 +503,7 @@ class Augmented_PCL_Publish:
 
         # Define the marker message
         marker_msg = Marker()
-        marker_msg.header.frame_id = 'point'
+        marker_msg.header.frame_id = 'lidar'
         marker_msg.type = Marker.LINE_STRIP 
         marker_msg.action = Marker.ADD
         marker_msg.scale.x = 0.3
@@ -466,7 +547,7 @@ class Augmented_PCL_Publish:
 
         # Define the marker message
         marker_msg = Marker()
-        marker_msg.header.frame_id = 'point'
+        marker_msg.header.frame_id = 'lidar'
         marker_msg.type = Marker.POINTS 
         marker_msg.action = Marker.ADD
         marker_msg.scale.x = 0.3
@@ -501,7 +582,7 @@ class Augmented_PCL_Publish:
 
         # Define the marker message
         marker_msg = Marker()
-        marker_msg.header.frame_id = 'point'
+        marker_msg.header.frame_id = 'lidar'
         marker_msg.type = Marker.CYLINDER 
         marker_msg.action = Marker.ADD
         marker_msg.scale.x = 1
@@ -529,7 +610,7 @@ class Augmented_PCL_Publish:
 
         # Define the marker message
         marker_msg = Marker()
-        marker_msg.header.frame_id = 'point'
+        marker_msg.header.frame_id = 'lidar'
         marker_msg.type = Marker.LINE_STRIP 
         marker_msg.action = Marker.ADD
         marker_msg.scale.x = 0.3
@@ -573,7 +654,7 @@ class Augmented_PCL_Publish:
 
         # Define the marker message
         marker_msg = Marker()
-        marker_msg.header.frame_id = 'point'
+        marker_msg.header.frame_id = 'lidar'
         marker_msg.type = Marker.LINE_STRIP 
         marker_msg.action = Marker.ADD
         marker_msg.scale.x = 0.3
@@ -637,7 +718,7 @@ class Augmented_PCL_Publish:
 
         # Define the marker message
         marker_msg = Marker()
-        marker_msg.header.frame_id = 'point'
+        marker_msg.header.frame_id = 'lidar'
         marker_msg.type = Marker.POINTS 
         marker_msg.action = Marker.ADD
         marker_msg.scale.x = 0.3
@@ -647,6 +728,69 @@ class Augmented_PCL_Publish:
         marker_msg.color.r = 0.0
         marker_msg.color.g = 1.0
         marker_msg.color.b = 0.0
+
+        # Define the points that define the plane
+        
+        p1 = Point()
+        p1.x = box_points[0][0]
+        p1.y = box_points[0][1]
+        p1.z = box_points[0][2]
+
+        p2 = Point()
+        p2.x = box_points[1][0]
+        p2.y = box_points[1][1]
+        p2.z = box_points[1][2]
+
+        p3 = Point()
+        p3.x = box_points[2][0]
+        p3.y = box_points[2][1]
+        p3.z = box_points[2][2]
+
+        p4 = Point()
+        p4.x = box_points[3][0]
+        p4.y = box_points[3][1]
+        p4.z = box_points[3][2]
+
+    
+        p5 = Point()
+        p5.x = box_points[4][0]
+        p5.y = box_points[4][1]
+        p5.z = box_points[4][2]
+
+        p6 = Point()
+        p6.x = box_points[5][0]
+        p6.y = box_points[5][1]
+        p6.z = box_points[5][2]
+
+        p7 = Point()
+        p7.x = box_points[6][0]
+        p7.y = box_points[6][1]
+        p7.z = box_points[6][2]
+
+        p8 = Point()
+        p8.x = box_points[7][0]
+        p8.y = box_points[7][1]
+        p8.z = box_points[7][2]
+
+        # Set the points field of the marker message
+        marker_msg.points = [p1, p2,p3,p4,p5,p6,p7,p8 ]
+        marker_pub.publish(marker_msg)
+    def visualization_projected(self,box_points):
+        # Create a marker publisher
+        marker_pub = rospy.Publisher('visualization_marker_projected', Marker, queue_size=10)
+
+        # Define the marker message
+        marker_msg = Marker()
+        marker_msg.header.frame_id = 'lidar'
+        marker_msg.type = Marker.POINTS 
+        marker_msg.action = Marker.ADD
+        marker_msg.scale.x = 0.3
+        marker_msg.scale.y = 0.3
+        marker_msg.scale.z = 0.3
+        marker_msg.color.a = 1.0
+        marker_msg.color.r = 0.0
+        marker_msg.color.g = 0.0
+        marker_msg.color.b = 1.0
 
         # Define the points that define the plane
         
