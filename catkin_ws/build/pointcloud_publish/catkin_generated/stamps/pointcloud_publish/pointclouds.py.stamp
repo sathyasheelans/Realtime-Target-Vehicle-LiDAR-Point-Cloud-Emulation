@@ -62,7 +62,7 @@ import numpy as np
 import open3d as o3d
 import pickle
 from math import floor, ceil
-from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import PointCloud2, PointField
 from sensor_msgs.msg import PointCloud
 import std_msgs.msg
 from geometry_msgs.msg import Pose
@@ -88,7 +88,7 @@ class Augmented_PCL_Publish:
         #Initilize the variables
         self.pose=Pose()
         self.point_background=PointCloud2()
-        self.Point_cloud=PointCloud()
+        #self.Point_cloud=PointCloud()
         self.curr_position=[]
         self.pcl_dict=dict
         self.keys=list(self.pcl_dict.keys())
@@ -179,10 +179,13 @@ class Augmented_PCL_Publish:
         #xyz_array = ros_numpy.point_cloud2.get_xyz_points(self.point_background)
         #xyz_array = pcl2.read_points_list(self.point_background, skip_nans=True, field_names=("x", "y", "z"))
         real_pointcloud_num = ros_numpy.numpify(data_1)
-        self.real_pointcloud=np.zeros((real_pointcloud_num.shape[0],3))
+        self.real_pointcloud=np.zeros((real_pointcloud_num.shape[0],4))
         self.real_pointcloud[:,0]=real_pointcloud_num['x']
         self.real_pointcloud[:,1]=real_pointcloud_num['y']
         self.real_pointcloud[:,2]=real_pointcloud_num['z']
+        self.real_pointcloud[:,3]=real_pointcloud_num['intensity']
+        #rospy.loginfo("check")
+        #rospy.loginfo(real_pointcloud_num['intensity'])
 
         
 
@@ -253,13 +256,15 @@ class Augmented_PCL_Publish:
     
     def point_cloud_publish(self,pcd):
 
-        start_time = rospy.get_time()
+        start_time = rospy.get_time()        
         #Function to call pointcloud transform
-        Transformed_pcd, Orientedbounding_box , Axisalignedbunding_box=self.point_cloud_transform_o3d(pcd)
+        Transformed_pcd_temp, Orientedbounding_box , Axisalignedbunding_box=self.point_cloud_transform_o3d(pcd)
+        new_column = np.full((Transformed_pcd_temp.shape[0], 1), max(self.real_pointcloud[:,3]))
+        Transformed_pcd =  np.append(Transformed_pcd_temp, new_column, axis=1)
         
         #remove the background pointcloud
         point_cloud_background = o3d.geometry.PointCloud()
-        point_cloud_background.points = o3d.utility.Vector3dVector(self.real_pointcloud)
+        point_cloud_background.points = o3d.utility.Vector3dVector(self.real_pointcloud[:,:3])
 
         box_points=Axisalignedbunding_box.get_box_points()
         box_center=Axisalignedbunding_box.get_center()
@@ -267,6 +272,8 @@ class Augmented_PCL_Publish:
         #remove the points inside the vehicle bounding box
         inliers_indices = Orientedbounding_box.get_point_indices_within_bounding_box(point_cloud_background.points)
         outliers_pcd = point_cloud_background.select_by_index(inliers_indices, invert=True)
+
+        
 
         #visualization of the bounding box
         #self.visualization_boundingbox(np.array(Orientedbounding_box.get_box_points()))
@@ -276,12 +283,25 @@ class Augmented_PCL_Publish:
         frustrum_points_np=np.array(frustrum_points)
         
         #function to remove the points inside frustum
-        outliers_pcd_1=self.remove_points_inside_frustum(frustrum_points_np, np.array(outliers_pcd.points))
+        outliers_pcd_1=self.remove_points_inside_frustum(frustrum_points_np, np.array(point_cloud_background.points))
 
         #augment the transformed pcd with real-time pcd(removed)
         #augmented_pcd_1=np.concatenate((Transformed_pcd,np.array(outliers_pcd.points)))
-        augmented_pcd=np.concatenate((Transformed_pcd,outliers_pcd_1))
+        B=np.array(outliers_pcd_1)
+        A=self.real_pointcloud
 
+        # Check which column in A has the same values as B
+        matching_column = np.isin(A[:, :3], B).all(axis=1)
+
+        #rospy.loginfo(np.shape(matching_column))
+        # Extract the corresponding fourth column from A
+        matching_values = A[matching_column][:, 3]
+
+        # Append the matching values to B
+        real_pointcloud_with_intensity = np.concatenate((B, matching_values[:, None]), axis=1)
+
+        #augmented_pcd=np.concatenate((Transformed_pcd,outliers_pcd_1))
+        augmented_pcd=np.concatenate((Transformed_pcd,real_pointcloud_with_intensity))
 
         #header
         header = std_msgs.msg.Header()
@@ -292,18 +312,58 @@ class Augmented_PCL_Publish:
         #transformed_pcl_pub=rospy.Publisher("transformed_pcl",PointCloud2,queue_size=10)
         augmented_pcl_pub=rospy.Publisher("augmented_pcl",PointCloud2,queue_size=10)
 
+         
         #create pointcloud from points
         #self.transformed_point_cloud = pcl2.create_cloud_xyz32(header, augmented_pcd_1.astype(np.float32))
-        self.augmented_point_cloud = pcl2.create_cloud_xyz32(header, augmented_pcd.astype(np.float32))
+        #self.augmented_point_cloud = pcl2.create_cloud_xyz32(header, augmented_pcd.astype(np.float32))
+        self.augmented_point_cloud=self.pointcloud2_creation(augmented_pcd)
 
+        
 
         #transformed_pcl_pub.publish(self.transformed_point_cloud)
         augmented_pcl_pub.publish(self.augmented_point_cloud)
 
         duration = rospy.get_time() - start_time
         rospy.loginfo("point_cloud_publish %s",duration)
+        
         #self.rate.sleep()
     
+    #Function to crerate a PointCloud2 msg
+
+    def pointcloud2_creation(self, pcd):
+
+        numpy_array=pcd.astype(np.float32)
+        # Create the PointCloud2 message
+        cloud_msg = PointCloud2()
+
+        # Set the fields of the PointCloud2 message
+        cloud_msg.header.stamp = rospy.Time.now()
+        cloud_msg.header.frame_id = 'lidar'
+        cloud_msg.height = 1
+        cloud_msg.width = len(numpy_array)
+        cloud_msg.fields.append(PointField('x', 0, PointField.FLOAT32, 1))
+        cloud_msg.fields.append(PointField('y', 4, PointField.FLOAT32, 1))
+        cloud_msg.fields.append(PointField('z', 8, PointField.FLOAT32, 1))
+        cloud_msg.fields.append(PointField('intensity', 12, PointField.FLOAT32, 1))
+        cloud_msg.point_step = 16  # Size of each point in bytes
+        cloud_msg.row_step = cloud_msg.point_step * cloud_msg.width
+        cloud_msg.is_bigendian = False
+        cloud_msg.is_dense = True
+
+        # Create a structured array from the numpy_array and intensity_array
+        structured_array = np.zeros(len(numpy_array), dtype=[('x', np.float32), ('y', np.float32),
+                                                            ('z', np.float32), ('intensity', np.float32)])
+        structured_array['x'] = numpy_array[:, 0]
+        structured_array['y'] = numpy_array[:, 1]
+        structured_array['z'] = numpy_array[:, 2]
+        structured_array['intensity'] = numpy_array[:, 3]
+        #structured_array['intensity'] = 1.0
+
+        # Flatten the structured array and assign it as the point cloud data
+        cloud_msg.data = structured_array.tobytes()
+
+        return cloud_msg
+
     #Function to get the bounding box and perform transformation of the pointcloud and return the transformed pcl
     def point_cloud_transform_o3d(self,pcd):
         
