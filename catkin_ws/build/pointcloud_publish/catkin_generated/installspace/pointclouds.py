@@ -73,6 +73,7 @@ from datetime import datetime
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point
 import message_filters
+from scipy.spatial import cKDTree
 #from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
 
 import sensor_msgs.point_cloud2 as pcl2
@@ -256,14 +257,22 @@ class Augmented_PCL_Publish:
     
     def point_cloud_publish(self,pcd):
 
-        start_time = rospy.get_time()        
+              
         #Function to call pointcloud transform
+        #Transformed_pcd, Orientedbounding_box , Axisalignedbunding_box=self.point_cloud_transform_o3d(pcd)
+        #Transformed_pcd =  np.concatenate((Transformed_pcd_temp, pcd[:,3].reshape(-1,1)), axis=1)
+        #rospy.loginfo(np.shape(Transformed_pcd))
+        #rospy.loginfo(np.shape(pcd[:,:3]))
+        #rospy.loginfo(np.shape(pcd[:,3].reshape(-1,1)))
+
         Transformed_pcd_temp, Orientedbounding_box , Axisalignedbunding_box=self.point_cloud_transform_o3d(pcd)
         new_column = np.full((Transformed_pcd_temp.shape[0], 1), max(self.real_pointcloud[:,3]))
-        Transformed_pcd =  np.append(Transformed_pcd_temp, new_column, axis=1)
+        Transformed_pcd =  np.concatenate((Transformed_pcd_temp,new_column), axis=1)
         
         #remove the background pointcloud
+        A=self.real_pointcloud
         point_cloud_background = o3d.geometry.PointCloud()
+        #point_cloud_background.points = o3d.utility.Vector3dVector(self.real_pointcloud[:,:3])
         point_cloud_background.points = o3d.utility.Vector3dVector(self.real_pointcloud[:,:3])
 
         box_points=Axisalignedbunding_box.get_box_points()
@@ -283,14 +292,17 @@ class Augmented_PCL_Publish:
         frustrum_points_np=np.array(frustrum_points)
         
         #function to remove the points inside frustum
-        outliers_pcd_1=self.remove_points_inside_frustum(frustrum_points_np, np.array(point_cloud_background.points))
+        
+        #outliers_pcd_1=self.remove_points_inside_frustum(frustrum_points_np, np.array(point_cloud_background.points))
+        outliers_pcd_1=self.remove_points_inside_frustum(frustrum_points_np, np.array(A))
 
+        start_time = rospy.get_time()  
         #augment the transformed pcd with real-time pcd(removed)
         #augmented_pcd_1=np.concatenate((Transformed_pcd,np.array(outliers_pcd.points)))
-        B=np.array(outliers_pcd_1)
-        A=self.real_pointcloud
-
-        # Check which column in A has the same values as B
+        #B=np.array(outliers_pcd_1)
+        
+        """ 
+       # Check which column in A has the same values as B
         matching_column = np.isin(A[:, :3], B).all(axis=1)
 
         #rospy.loginfo(np.shape(matching_column))
@@ -298,10 +310,22 @@ class Augmented_PCL_Publish:
         matching_values = A[matching_column][:, 3]
 
         # Append the matching values to B
-        real_pointcloud_with_intensity = np.concatenate((B, matching_values[:, None]), axis=1)
+        real_pointcloud_with_intensity = np.concatenate((B, matching_values[:, None].reshape(-1,1)), axis=1)
+        """
 
-        #augmented_pcd=np.concatenate((Transformed_pcd,outliers_pcd_1))
-        augmented_pcd=np.concatenate((Transformed_pcd,real_pointcloud_with_intensity))
+        """A_values = A[:, :3]
+        A_intensities = A[:, 3]
+
+        tree = cKDTree(A_values)
+
+        distances, indices = tree.query(B, k=1)
+
+        corresponding_intensities = np.where(distances == 0, A_intensities[indices], 0)
+
+        C = np.column_stack((B, corresponding_intensities))"""
+
+        augmented_pcd=np.concatenate((Transformed_pcd,outliers_pcd_1))
+        #augmented_pcd=np.concatenate((Transformed_pcd,C))
 
         #header
         header = std_msgs.msg.Header()
@@ -312,7 +336,8 @@ class Augmented_PCL_Publish:
         #transformed_pcl_pub=rospy.Publisher("transformed_pcl",PointCloud2,queue_size=10)
         augmented_pcl_pub=rospy.Publisher("augmented_pcl",PointCloud2,queue_size=10)
 
-         
+        
+        
         #create pointcloud from points
         #self.transformed_point_cloud = pcl2.create_cloud_xyz32(header, augmented_pcd_1.astype(np.float32))
         #self.augmented_point_cloud = pcl2.create_cloud_xyz32(header, augmented_pcd.astype(np.float32))
@@ -325,7 +350,6 @@ class Augmented_PCL_Publish:
 
         duration = rospy.get_time() - start_time
         rospy.loginfo("point_cloud_publish %s",duration)
-        
         #self.rate.sleep()
     
     #Function to crerate a PointCloud2 msg
@@ -371,11 +395,13 @@ class Augmented_PCL_Publish:
         point_cloud_1 = o3d.geometry.PointCloud()
         pcd = [x for x in pcd if x[0]!=0 and x[1]!=0]
         pcd = np.unique(pcd, axis =0)
+        #point_cloud_1.points = o3d.utility.Vector3dVector(pcd[:,:3])
         point_cloud_1.points = o3d.utility.Vector3dVector(pcd)
         transformed_point_cloud=point_cloud_1.transform(self.Transformation_Matrix)
         boundingbox_POV=o3d.geometry.OrientedBoundingBox.create_from_points(transformed_point_cloud.points)
         boundingbox_POV_axis=o3d.geometry.AxisAlignedBoundingBox.create_from_points(transformed_point_cloud.points)
         transformed_pcd = np.asarray(transformed_point_cloud.points)
+        #Transformed_pcd =  np.concatenate((transformed_pcd, pcd[:,3].reshape(-1,1)), axis=1)
 
         duration = rospy.get_time() - start_time
         rospy.loginfo("point_cloud_transform_o3d %s",duration)
@@ -385,7 +411,7 @@ class Augmented_PCL_Publish:
     def frustrum_generation(self,box_points,target_location):
 
         start_time = rospy.get_time()
-        lidar_location=[0,0,2]
+        lidar_location=[0,0,0]
         #self.visualization_Lidar(lidar_location)
 
         #Distance between lidar and target vehicle
@@ -427,7 +453,7 @@ class Augmented_PCL_Publish:
         if len(points_projected_sorted)>4:
             points_projected_sorted=points_projected_sorted[4:]
 
-        #rospy.loginfo(points_projected_sorted)
+        
         #Generation of Frustrum points
         frustrum_points=[]
 
@@ -445,6 +471,7 @@ class Augmented_PCL_Publish:
         # Calculate the vectors formed by the line and the point
         line_vector = line_end - line_start 
 
+        #rospy.loginfo(points_projected_sorted)
         for point in points_projected_sorted:
             # Convert points to numpy arrays
             point = np.array(point)
@@ -452,18 +479,25 @@ class Augmented_PCL_Publish:
             # Calculate the cross product of the vectors
             cross_product = np.cross(line_vector, point_vector)
             #rospy.loginfo(cross_product)
+            #rospy.loginfo(point[2])
+            #rospy.loginfo(target_location[2])
             if point[2]>target_location[2]:
                 if cross_product[2]>0:
                     tl=point
+                    #rospy.loginfo("tl")
                 else:
                     tr=point
+                    #rospy.loginfo("tr")
             else:
                 if cross_product[2]<0:
                     br=point
+                    #rospy.loginfo("br")
                 else:
                     bl=point
+                    #rospy.loginfo("bl")
 
         points_projected_sorted=[tl,tr,br,bl]
+        #rospy.loginfo(points_projected_sorted)
 
         
         #self.visualization_base(points_projected_sorted)
@@ -547,7 +581,7 @@ class Augmented_PCL_Publish:
         # Iterate through the point cloud and remove points inside the frustum
         inside_mask = np.ones(len(point_cloud), dtype=bool)
         for plane in planes:
-            distances = np.dot(point_cloud, plane[:3]) + plane[3]
+            distances = np.dot(point_cloud[:,:3], plane[:3]) + plane[3]
             inside_mask = np.logical_and(inside_mask, distances > 0)
         point_cloud = point_cloud[~inside_mask]
         #rospy.loginfo(inside_frustum)
@@ -905,6 +939,8 @@ if __name__ == '__main__':
     '''
 
     with open('/home/santhanam.17/Carla_scripts/point_cloud_database_main_optimized_2.pickle', 'rb') as handle:
+    #with open('/home/santhanam.17/Carla_scripts/point_cloud_database_main_optimized_intensity.pickle', 'rb') as handle:
+        
         read_dict = pickle.load(handle)
     try:
         x=Augmented_PCL_Publish(read_dict)
