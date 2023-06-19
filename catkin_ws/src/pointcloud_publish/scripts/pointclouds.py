@@ -61,19 +61,21 @@ import math
 import numpy as np
 import open3d as o3d
 import pickle
+#import tf2_ros, tf2_geometry_msgs
 from math import floor, ceil
 from sensor_msgs.msg import PointCloud2, PointField
 from sensor_msgs.msg import PointCloud
 import std_msgs.msg
-from geometry_msgs.msg import Pose
-import tf
+from geometry_msgs.msg import Pose, PoseStamped
+#import tf
 import ros_numpy
 from collections import OrderedDict
 from datetime import datetime
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point
 import message_filters
-from scipy.spatial import cKDTree
+from autoware_sim_op.msg import POV_OBJECTS
+from ss_core.utils.conversions import quaternion2euler, radians2degree
 #from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
 
 import sensor_msgs.point_cloud2 as pcl2
@@ -89,13 +91,16 @@ class Augmented_PCL_Publish:
         #Initilize the variables
         self.pose=Pose()
         self.point_background=PointCloud2()
-        #self.Point_cloud=PointCloud()
+        self.Point_cloud=PointCloud()
         self.curr_position=[]
         self.pcl_dict=dict
         self.keys=list(self.pcl_dict.keys())
         self.last_callback_time = 0
         self.not_first_callback = False
         self.Transformation_Matrix= np.eye(4)
+        self.obj_pose_array = None
+        self.real_pointcloud=None
+        self.egopose=PoseStamped()
         
         #self.listener = tf.TransformListener()
         #self.listener.waitForTransform("target", "point", rospy.Time(0),rospy.Duration(10))
@@ -103,10 +108,13 @@ class Augmented_PCL_Publish:
 
         #Initialize a subscriber to subscribe to background to real-time background pointcloud
         #self.points_raw_subscriber=rospy.Subscriber('points_raw',PointCloud2,self.point_cloud_subscribe)
-        self.points_raw_subscriber=rospy.Subscriber('points_raw',PointCloud2,self.point_cloud_subscribe)
+        rospy.loginfo("check")
+        self.points_raw_subscriber=rospy.Subscriber('/points_raw',PointCloud2,self.point_cloud_subscribe)
 
         #Initialize a Subscriber to subscribe to the pose (postion and orientation) of the target vehicle
-        self.pose_subscriber=rospy.Subscriber('target_pose',Pose,self.update_callback)
+        #self.pose_subscriber=rospy.Subscriber('target_pose',Pose,self.update_callback)
+        self.ego_pose_subscriber=rospy.Subscriber("/current_pose",PoseStamped,self.ego_pose)
+        self.pose_subscriber=rospy.Subscriber("/global_pov_objects_lidar",POV_OBJECTS,self.pov_obj_cb)
 
         #self.points_raw=message_filters.Subscriber('points_raw',PointCloud2)
         #self.pose_sub=message_filters.Subscriber('target_pose',PoseStamped)
@@ -116,6 +124,68 @@ class Augmented_PCL_Publish:
         
         rospy.spin()
         #self.rate.sleep()
+
+    def ego_pose(self,data):
+        self.egopose=data
+        topics=rospy.get_published_topics()
+        real_pointcloud_available= any(topic == "/points_raw" for topic, _ in topics)
+        POV_available= any(topic == "/global_pov_objects_lidar" for topic, _ in topics)
+
+        """if real_pointcloud_available:
+            rospy.loginfo("Real point cloud")
+        else:
+            rospy.loginfo("not available")
+        
+        if POV_available:
+            rospy.loginfo("POV Available")
+        else:
+            rospy.loginfo("not available")"""
+
+
+    def pov_obj_cb(self,msg):
+
+        #rospy.loginfo("check1")
+        obj_array = msg.objects
+        # print("obj array:", len(obj_array))
+        #trans = self.get_transform("map", "lidar")
+        # print("trans:",trans==None)
+        obj_pose_array = []
+        obj_dim_array = []
+        
+        for i in range(len(obj_array)):
+            obj = PoseStamped()
+            obj.header.frame_id = "map"
+            obj.pose = obj_array[i].pose 
+            obj_pose_array.append(obj)
+            obj_dim_array.append([obj_array[i].scale_x,obj_array[i].scale_y,obj_array[i].scale_z])
+            
+        # print("obj pose array:",len(obj_pose_array))
+        #rospy.loginfo(len(obj_pose_array))
+        self.obj_pose_array = obj_pose_array
+
+        self.curr_position=np.array([self.obj_pose_array[0].pose.position.x,\
+            self.obj_pose_array[0].pose.position.y,\
+                self.obj_pose_array[0].pose.position.z])
+        #rospy.loginfo(self.egopose.pose.position)
+        #rospy.loginfo(self.obj_pose_array[0].pose.position)
+
+        oreintation_list_ego=quaternion2euler(self.egopose.pose.orientation.x,\
+             self.egopose.pose.orientation.y, \
+                 self.egopose.pose.orientation.z,\
+                      self.egopose.pose.orientation.w)
+        
+        oreintation_list_pov=quaternion2euler(self.obj_pose_array[0].pose.orientation.x,\
+             self.obj_pose_array[0].pose.orientation.y, \
+                 self.obj_pose_array[0].pose.orientation.z,\
+                      self.obj_pose_array[0].pose.orientation.w)
+
+        self.orientation=radians2degree(oreintation_list_pov[2])
+        rospy.loginfo(self.orientation)
+        rospy.loginfo(self.curr_position)
+
+        #Call the function which publishes the augmented point cloud
+        self.point_cloud_publish(self.closest_point(self.curr_position,self.orientation))
+        self.obj_dim_array = obj_dim_array
 
     def ucallback(self, data_1, data):
         
@@ -176,6 +246,7 @@ class Augmented_PCL_Publish:
     def point_cloud_subscribe(self,data_1):
         #rospy.loginfo(data_1.header.stamp)
         #rospy.loginfo(rospy.get_time())
+        #rospy.loginfo("check1")
         self.point_background=data_1
         #xyz_array = ros_numpy.point_cloud2.get_xyz_points(self.point_background)
         #xyz_array = pcl2.read_points_list(self.point_background, skip_nans=True, field_names=("x", "y", "z"))
@@ -185,8 +256,7 @@ class Augmented_PCL_Publish:
         self.real_pointcloud[:,1]=real_pointcloud_num['y']
         self.real_pointcloud[:,2]=real_pointcloud_num['z']
         self.real_pointcloud[:,3]=real_pointcloud_num['intensity']
-        #rospy.loginfo("check")
-        #rospy.loginfo(real_pointcloud_num['intensity'])
+        rospy.loginfo(real_pointcloud_num['intensity'])
 
         
 
@@ -194,7 +264,7 @@ class Augmented_PCL_Publish:
     def closest_point(self, arr, orr):
 
         start_time = rospy.get_time()
-        Ego_postion=np.array([0,0,2])
+        Ego_postion=np.array([-0.539,0,1.633])
         dist = round(np.linalg.norm(arr - Ego_postion))
         lst=list(range(0,360,1))
 
@@ -249,6 +319,9 @@ class Augmented_PCL_Publish:
         self.Transformation_Matrix[0,3]=arr[0]-closest_keys[0][0]
         self.Transformation_Matrix[1,3]=arr[1]-closest_keys[0][1]
         self.Transformation_Matrix[2,3]=arr[2]-closest_keys[0][2]
+        #rospy.loginfo(arr[2])
+        rospy.loginfo(len(pcd))
+        rospy.loginfo(closest_keys)
 
         duration = rospy.get_time() - start_time
         rospy.loginfo("closest_point %s",duration)
@@ -257,87 +330,83 @@ class Augmented_PCL_Publish:
     
     def point_cloud_publish(self,pcd):
 
-              
+        start_time = rospy.get_time()        
         #Function to call pointcloud transform
         #Transformed_pcd, Orientedbounding_box , Axisalignedbunding_box=self.point_cloud_transform_o3d(pcd)
-        #Transformed_pcd =  np.concatenate((Transformed_pcd_temp, pcd[:,3].reshape(-1,1)), axis=1)
-        #rospy.loginfo(np.shape(Transformed_pcd))
-        #rospy.loginfo(np.shape(pcd[:,:3]))
-        #rospy.loginfo(np.shape(pcd[:,3].reshape(-1,1)))
 
         Transformed_pcd_temp, Orientedbounding_box , Axisalignedbunding_box=self.point_cloud_transform_o3d(pcd)
-        new_column = np.full((Transformed_pcd_temp.shape[0], 1), max(self.real_pointcloud[:,3]))
+        new_column = np.full((Transformed_pcd_temp.shape[0], 1), 255.0)
         Transformed_pcd =  np.concatenate((Transformed_pcd_temp,new_column), axis=1)
         
-        #remove the background pointcloud
-        A=self.real_pointcloud
-        point_cloud_background = o3d.geometry.PointCloud()
-        #point_cloud_background.points = o3d.utility.Vector3dVector(self.real_pointcloud[:,:3])
-        point_cloud_background.points = o3d.utility.Vector3dVector(self.real_pointcloud[:,:3])
 
-        box_points=Axisalignedbunding_box.get_box_points()
-        box_center=Axisalignedbunding_box.get_center()
-
-        #remove the points inside the vehicle bounding box
-        inliers_indices = Orientedbounding_box.get_point_indices_within_bounding_box(point_cloud_background.points)
-        outliers_pcd = point_cloud_background.select_by_index(inliers_indices, invert=True)
-
+        if self.real_pointcloud is not None:
         
+            #remove the background pointcloud
+            A=self.real_pointcloud
+            point_cloud_background = o3d.geometry.PointCloud()
+            #point_cloud_background.points = o3d.utility.Vector3dVector(self.real_pointcloud[:,:3])
+            point_cloud_background.points = o3d.utility.Vector3dVector(self.real_pointcloud[:,:3])
 
-        #visualization of the bounding box
-        #self.visualization_boundingbox(np.array(Orientedbounding_box.get_box_points()))
+            box_points=Axisalignedbunding_box.get_box_points()
+            box_center=Axisalignedbunding_box.get_center()
 
-        #Generate frustum base
-        frustrum_points=self.frustrum_generation(box_points,box_center)
-        frustrum_points_np=np.array(frustrum_points)
-        
-        #function to remove the points inside frustum
-        
-        #outliers_pcd_1=self.remove_points_inside_frustum(frustrum_points_np, np.array(point_cloud_background.points))
-        outliers_pcd_1=self.remove_points_inside_frustum(frustrum_points_np, np.array(A))
+            #remove the points inside the vehicle bounding box
+            inliers_indices = Orientedbounding_box.get_point_indices_within_bounding_box(point_cloud_background.points)
+            outliers_pcd = point_cloud_background.select_by_index(inliers_indices, invert=True)
 
-        start_time = rospy.get_time()  
-        #augment the transformed pcd with real-time pcd(removed)
-        #augmented_pcd_1=np.concatenate((Transformed_pcd,np.array(outliers_pcd.points)))
-        #B=np.array(outliers_pcd_1)
-        
-        """ 
-       # Check which column in A has the same values as B
-        matching_column = np.isin(A[:, :3], B).all(axis=1)
+            
 
-        #rospy.loginfo(np.shape(matching_column))
-        # Extract the corresponding fourth column from A
-        matching_values = A[matching_column][:, 3]
+            #visualization of the bounding box
+            #self.visualization_boundingbox(np.array(Orientedbounding_box.get_box_points()))
 
-        # Append the matching values to B
-        real_pointcloud_with_intensity = np.concatenate((B, matching_values[:, None].reshape(-1,1)), axis=1)
-        """
+            #Generate frustum base
+            frustrum_points=self.frustrum_generation(box_points,box_center)
+            frustrum_points_np=np.array(frustrum_points)
+            
+            #function to remove the points inside frustum
+            
+            #outliers_pcd_1=self.remove_points_inside_frustum(frustrum_points_np, np.array(point_cloud_background.points))
+            outliers_pcd_1=self.remove_points_inside_frustum(frustrum_points_np, np.array(A))
 
-        """A_values = A[:, :3]
-        A_intensities = A[:, 3]
+            start_time = rospy.get_time()  
+            #augment the transformed pcd with real-time pcd(removed)
+            #augmented_pcd_1=np.concatenate((Transformed_pcd,np.array(outliers_pcd.points)))
+            #B=np.array(outliers_pcd_1)
+            
+            """ 
+        # Check which column in A has the same values as B
+            matching_column = np.isin(A[:, :3], B).all(axis=1)
 
-        tree = cKDTree(A_values)
+            #rospy.loginfo(np.shape(matching_column))
+            # Extract the corresponding fourth column from A
+            matching_values = A[matching_column][:, 3]
 
-        distances, indices = tree.query(B, k=1)
+            # Append the matching values to B
+            real_pointcloud_with_intensity = np.concatenate((B, matching_values[:, None].reshape(-1,1)), axis=1)
+            """
 
-        corresponding_intensities = np.where(distances == 0, A_intensities[indices], 0)
+            """A_values = A[:, :3]
+            A_intensities = A[:, 3]
 
-        C = np.column_stack((B, corresponding_intensities))"""
+            tree = cKDTree(A_values)
 
-        augmented_pcd=np.concatenate((Transformed_pcd,outliers_pcd_1))
-        #augmented_pcd=np.concatenate((Transformed_pcd,C))
+            distances, indices = tree.query(B, k=1)
 
-        #header
-        header = std_msgs.msg.Header()
-        header.stamp = rospy.Time.now()
-        header.frame_id = 'lidar'
+            corresponding_intensities = np.where(distances == 0, A_intensities[indices], 0)
+
+            C = np.column_stack((B, corresponding_intensities))"""
+
+            augmented_pcd=np.concatenate((Transformed_pcd,outliers_pcd_1))
+            #augmented_pcd=np.concatenate((Transformed_with_column,real_pointcloud_with_intensity))
+
+        else:
+            augmented_pcd= Transformed_pcd
 
         #Pointcloud publishers
         #transformed_pcl_pub=rospy.Publisher("transformed_pcl",PointCloud2,queue_size=10)
-        augmented_pcl_pub=rospy.Publisher("augmented_pcl",PointCloud2,queue_size=10)
+        augmented_pcl_pub=rospy.Publisher("points_mod",PointCloud2,queue_size=10)
 
-        
-        
+         
         #create pointcloud from points
         #self.transformed_point_cloud = pcl2.create_cloud_xyz32(header, augmented_pcd_1.astype(np.float32))
         #self.augmented_point_cloud = pcl2.create_cloud_xyz32(header, augmented_pcd.astype(np.float32))
@@ -350,6 +419,7 @@ class Augmented_PCL_Publish:
 
         duration = rospy.get_time() - start_time
         rospy.loginfo("point_cloud_publish %s",duration)
+        
         #self.rate.sleep()
     
     #Function to crerate a PointCloud2 msg
@@ -381,7 +451,6 @@ class Augmented_PCL_Publish:
         structured_array['y'] = numpy_array[:, 1]
         structured_array['z'] = numpy_array[:, 2]
         structured_array['intensity'] = numpy_array[:, 3]
-        #structured_array['intensity'] = 1.0
 
         # Flatten the structured array and assign it as the point cloud data
         cloud_msg.data = structured_array.tobytes()
@@ -411,7 +480,7 @@ class Augmented_PCL_Publish:
     def frustrum_generation(self,box_points,target_location):
 
         start_time = rospy.get_time()
-        lidar_location=[0,0,0]
+        lidar_location=[0,0,2]
         #self.visualization_Lidar(lidar_location)
 
         #Distance between lidar and target vehicle
@@ -453,7 +522,7 @@ class Augmented_PCL_Publish:
         if len(points_projected_sorted)>4:
             points_projected_sorted=points_projected_sorted[4:]
 
-        
+        #rospy.loginfo(points_projected_sorted)
         #Generation of Frustrum points
         frustrum_points=[]
 
@@ -471,7 +540,6 @@ class Augmented_PCL_Publish:
         # Calculate the vectors formed by the line and the point
         line_vector = line_end - line_start 
 
-        #rospy.loginfo(points_projected_sorted)
         for point in points_projected_sorted:
             # Convert points to numpy arrays
             point = np.array(point)
@@ -479,25 +547,18 @@ class Augmented_PCL_Publish:
             # Calculate the cross product of the vectors
             cross_product = np.cross(line_vector, point_vector)
             #rospy.loginfo(cross_product)
-            #rospy.loginfo(point[2])
-            #rospy.loginfo(target_location[2])
             if point[2]>target_location[2]:
                 if cross_product[2]>0:
                     tl=point
-                    #rospy.loginfo("tl")
                 else:
                     tr=point
-                    #rospy.loginfo("tr")
             else:
                 if cross_product[2]<0:
                     br=point
-                    #rospy.loginfo("br")
                 else:
                     bl=point
-                    #rospy.loginfo("bl")
 
         points_projected_sorted=[tl,tr,br,bl]
-        #rospy.loginfo(points_projected_sorted)
 
         
         #self.visualization_base(points_projected_sorted)
@@ -938,9 +999,7 @@ if __name__ == '__main__':
     Sample code to publish a pcl2 with python
     '''
 
-    with open('/home/santhanam.17/Carla_scripts/point_cloud_database_main_optimized_2.pickle', 'rb') as handle:
-    #with open('/home/santhanam.17/Carla_scripts/point_cloud_database_main_optimized_intensity.pickle', 'rb') as handle:
-        
+    with open('/home/vrtc60/vrtc_ws/point_cloud_database_main_optimized_2.pickle', 'rb') as handle:
         read_dict = pickle.load(handle)
     try:
         x=Augmented_PCL_Publish(read_dict)

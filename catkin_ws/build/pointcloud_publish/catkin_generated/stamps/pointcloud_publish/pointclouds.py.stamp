@@ -265,6 +265,10 @@ class Augmented_PCL_Publish:
         #rospy.loginfo(np.shape(pcd[:,:3]))
         #rospy.loginfo(np.shape(pcd[:,3].reshape(-1,1)))
 
+        # Create a StatisticalOutlierRemoval filter object
+
+    
+
         Transformed_pcd_temp, Orientedbounding_box , Axisalignedbunding_box=self.point_cloud_transform_o3d(pcd)
         new_column = np.full((Transformed_pcd_temp.shape[0], 1), max(self.real_pointcloud[:,3]))
         Transformed_pcd =  np.concatenate((Transformed_pcd_temp,new_column), axis=1)
@@ -285,7 +289,7 @@ class Augmented_PCL_Publish:
         
 
         #visualization of the bounding box
-        #self.visualization_boundingbox(np.array(Orientedbounding_box.get_box_points()))
+        self.visualization_boundingbox(np.array(Orientedbounding_box.get_box_points()))
 
         #Generate frustum base
         frustrum_points=self.frustrum_generation(box_points,box_center)
@@ -395,9 +399,24 @@ class Augmented_PCL_Publish:
         point_cloud_1 = o3d.geometry.PointCloud()
         pcd = [x for x in pcd if x[0]!=0 and x[1]!=0]
         pcd = np.unique(pcd, axis =0)
-        #point_cloud_1.points = o3d.utility.Vector3dVector(pcd[:,:3])
-        point_cloud_1.points = o3d.utility.Vector3dVector(pcd)
-        transformed_point_cloud=point_cloud_1.transform(self.Transformation_Matrix)
+        
+        point_cloud_1.points = o3d.utility.Vector3dVector(pcd[:,:3])
+
+
+
+        # Create a StatisticalOutlierRemoval filter object
+        outlier_filter = o3d.geometry.StatisticalOutlierRemoval()
+
+        # Set the number of neighbors and standard deviation multiplier
+        outlier_filter.set_input_cloud(point_cloud_1)
+        outlier_filter.set_mean_k(50)  # Number of neighbors to consider
+        outlier_filter.set_std_dev_mul_thresh(1.0)  # Standard deviation multiplier
+
+        # Apply the filter to remove outliers
+        pcd_filtered, _ = outlier_filter.filter()
+
+        #transformed_point_cloud=point_cloud_1.transform(self.Transformation_Matrix)
+        transformed_point_cloud=pcd_filtered.transform(self.Transformation_Matrix)
         boundingbox_POV=o3d.geometry.OrientedBoundingBox.create_from_points(transformed_point_cloud.points)
         boundingbox_POV_axis=o3d.geometry.AxisAlignedBoundingBox.create_from_points(transformed_point_cloud.points)
         transformed_pcd = np.asarray(transformed_point_cloud.points)
@@ -938,8 +957,8 @@ if __name__ == '__main__':
     Sample code to publish a pcl2 with python
     '''
 
-    with open('/home/santhanam.17/Carla_scripts/point_cloud_database_main_optimized_2.pickle', 'rb') as handle:
-    #with open('/home/santhanam.17/Carla_scripts/point_cloud_database_main_optimized_intensity.pickle', 'rb') as handle:
+    #with open('/home/santhanam.17/Carla_scripts/point_cloud_database_main_optimized_2.pickle', 'rb') as handle:
+    with open('/home/santhanam.17/Carla_scripts/point_cloud_database_main_optimized_intensity.pickle', 'rb') as handle:
         
         read_dict = pickle.load(handle)
     try:
