@@ -74,6 +74,8 @@ from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point
 import message_filters
 from scipy.spatial import cKDTree
+
+from numba import jit, cuda
 #from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
 
 import sensor_msgs.point_cloud2 as pcl2
@@ -194,7 +196,7 @@ class Augmented_PCL_Publish:
     def closest_point(self, arr, orr):
 
         start_time = rospy.get_time()
-        Ego_postion=np.array([0,0,2])
+        Ego_postion=np.array([-0.539,0,1.633])
         dist = round(np.linalg.norm(arr - Ego_postion))
         lst=list(range(0,360,1))
 
@@ -254,7 +256,7 @@ class Augmented_PCL_Publish:
         rospy.loginfo("closest_point %s",duration)
         return pcd
 
-    
+    @jit(target_backend='cuda') 
     def point_cloud_publish(self,pcd):
 
               

@@ -74,6 +74,8 @@ from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point
 import message_filters
 from scipy.spatial import cKDTree
+
+from numba import jit, cuda
 #from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
 
 import sensor_msgs.point_cloud2 as pcl2
@@ -194,7 +196,7 @@ class Augmented_PCL_Publish:
     def closest_point(self, arr, orr):
 
         start_time = rospy.get_time()
-        Ego_postion=np.array([0,0,2])
+        Ego_postion=np.array([-0.539,0,1.633])
         dist = round(np.linalg.norm(arr - Ego_postion))
         lst=list(range(0,360,1))
 
@@ -254,7 +256,7 @@ class Augmented_PCL_Publish:
         rospy.loginfo("closest_point %s",duration)
         return pcd
 
-    
+    @jit(target_backend='cuda') 
     def point_cloud_publish(self,pcd):
 
               
@@ -266,8 +268,15 @@ class Augmented_PCL_Publish:
         #rospy.loginfo(np.shape(pcd[:,3].reshape(-1,1)))
 
         Transformed_pcd_temp, Orientedbounding_box , Axisalignedbunding_box=self.point_cloud_transform_o3d(pcd)
-        new_column = np.full((Transformed_pcd_temp.shape[0], 1), max(self.real_pointcloud[:,3]))
-        Transformed_pcd =  np.concatenate((Transformed_pcd_temp,new_column), axis=1)
+        #new_column = np.full((Transformed_pcd_temp.shape[0], 1), max(self.real_pointcloud[:,3]))
+        p = np.array([0, 0, 0])
+
+        # Calculate the distances from p to each point in A
+        d = np.linalg.norm(Transformed_pcd_temp - p, axis=1)
+        result = np.exp(-0.004 * d)
+        result=result*255
+
+        Transformed_pcd =  np.concatenate((Transformed_pcd_temp, result[:, np.newaxis]), axis=1)
         
         #remove the background pointcloud
         A=self.real_pointcloud
